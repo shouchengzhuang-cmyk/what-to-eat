@@ -1,0 +1,18 @@
+{
+  "name": "今天吃什么",
+  "short_name": "吃什么",
+  "description": "一个移动端优先的随机吃饭选择工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
