@@ -365,7 +365,6 @@ function App() {
     setCurrentFood(next);
     if (next) {
       setLastFoodId(next.id);
-      showToast('已划掉，换一个。');
     } else {
       setIsResultMode(true);
       showToast('bro，这一轮快被你划完了，重新开始吧。');
@@ -732,7 +731,7 @@ function ResultCard({ food, resultContext, isSwipingAway, onRestart, onBackHome 
       </div>
 
       <div className="space-y-2 text-center">
-        <p className="text-xs font-medium text-slate-500">上划换一个 · {food.favorite ? '双击取消常吃' : '双击常吃'}</p>
+        <p className="text-xs font-medium text-slate-500">上划换 / {food.favorite ? '双击取消' : '双击常吃'}</p>
       </div>
     </article>
   );
