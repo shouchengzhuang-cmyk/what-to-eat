@@ -338,7 +338,7 @@ function App() {
     if (!next) {
       setCurrentFood(null);
       setIsResultMode(nextSkippedFoodIds.length > 0);
-      showToast(nextSkippedFoodIds.length > 0 ? 'bro，这一轮快被你划完了，重新开始吧。' : '这个条件下没有可推荐的，换个条件试试。');
+      showToast('没有可推荐的了');
       return;
     }
 
@@ -375,7 +375,7 @@ function App() {
     if (!currentFood) return;
     const nextFavorite = !currentFood.favorite;
     updateFood(currentFood.id, { favorite: nextFavorite });
-    showToast(nextFavorite ? '已加入常吃。' : '已取消常吃。');
+    showToast(nextFavorite ? '已设为常吃' : '已取消常吃');
   };
 
   const saveFood = (foodToSave) => {
@@ -409,7 +409,7 @@ function App() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    setSettingsMessage('已下载 JSON 备份文件。');
+    setSettingsMessage('已导出');
   };
 
   const importData = async (file) => {
@@ -421,9 +421,9 @@ function App() {
         throw new Error('Invalid format');
       }
       setFoods(normalizeFoods(parsed.foods));
-      setSettingsMessage('已导入 JSON 备份。');
+      setSettingsMessage('已导入');
     } catch {
-      setSettingsMessage('导入失败，请检查 JSON 文件。');
+      setSettingsMessage('导入失败');
     }
   };
 
@@ -434,7 +434,7 @@ function App() {
     setSkippedFoodIds([]);
     setRoundMealInfo(null);
     setSelectedScene('');
-    setSettingsMessage('已恢复默认菜单。');
+    setSettingsMessage('已恢复默认菜单');
   };
 
   const clearAll = () => {
@@ -444,7 +444,7 @@ function App() {
     setSkippedFoodIds([]);
     setRoundMealInfo(null);
     setSelectedScene('');
-    setSettingsMessage('已清空全部数据。');
+    setSettingsMessage('已清空');
   };
 
   return (
@@ -593,9 +593,9 @@ function RecommendPage({
       <section className="flex min-h-[calc(100vh-8rem)] flex-col pb-3">
         <div className="flex flex-1 flex-col justify-center py-6">
           <header className="text-center">
-            <p className="text-sm font-semibold text-amber-200">{selectedScene ? getGreeting() : '今天吃什么？'}</p>
+            <p className="text-sm font-semibold text-amber-200">{selectedScene ? getGreeting() : '先选个场景'}</p>
             <h1 className="mt-2 text-[2.35rem] font-bold leading-tight tracking-normal text-white">今天吃什么？</h1>
-            <p className="mt-3 text-sm font-normal text-slate-400">先选场景，再交给随机。</p>
+            <p className="mt-3 text-sm font-normal text-slate-400">别想了，交给随机。</p>
           </header>
 
           <div className="mt-10 grid grid-cols-2 gap-3">
@@ -633,7 +633,7 @@ function RecommendPage({
           )}
 
           <p className="mt-6 text-center text-xs text-slate-600">
-            {selectedScene ? `${selectedScene} · 当前时间是${homeMealInfo.label}` : '请选择到店或宿舍'}
+            {selectedScene ? `${selectedScene} · 当前时间是${homeMealInfo.label}` : '先选个场景'}
           </p>
         </div>
       </section>
@@ -756,7 +756,7 @@ function LibraryPage({ foods, editingFood, setEditingFood, onSave, onDelete, onT
 
   return (
     <section className="space-y-3">
-      <PageHeader title="菜单库" subtitle="新增、编辑和整理你真正会吃的选项。" />
+      <PageHeader title="菜单库" subtitle="整理那些你真的会吃的选项。" />
       <button
         type="button"
         onClick={() => setEditingFood(emptyFood)}
@@ -1018,7 +1018,7 @@ function SettingsPage({ message, onExport, onImport, onResetDefault, onClearAll 
     confirmAction === 'reset'
       ? {
           title: '确认恢复默认菜单？',
-          body: '这会覆盖当前菜单数据。',
+          body: '会改掉当前菜单。',
           confirmText: '确认恢复',
           danger: false,
           onConfirm: onResetDefault,
@@ -1040,7 +1040,7 @@ function SettingsPage({ message, onExport, onImport, onResetDefault, onClearAll 
       <div className="space-y-3 rounded-2xl border border-white/8 bg-white/[0.045] p-3.5">
         <div>
           <h2 className="text-sm font-semibold text-white">数据备份</h2>
-          <p className="mt-1 text-xs text-slate-500">导出后可以在其他设备导入。</p>
+          <p className="mt-1 text-xs text-slate-500">换设备前，先导出一份。</p>
         </div>
         <button type="button" onClick={onExport} className="h-11 w-full rounded-xl bg-amber-400 text-sm font-bold text-slate-950">
           导出 JSON
@@ -1062,7 +1062,7 @@ function SettingsPage({ message, onExport, onImport, onResetDefault, onClearAll 
       <div className="space-y-3 rounded-2xl border border-red-400/10 bg-red-400/[0.035] p-3.5">
         <div>
           <h2 className="text-sm font-semibold text-white">危险操作</h2>
-          <p className="mt-1 text-xs text-slate-500">会覆盖或移除当前菜单数据。</p>
+          <p className="mt-1 text-xs text-slate-500">这些操作会改掉当前菜单。</p>
         </div>
         <button type="button" onClick={() => setConfirmAction('reset')} className="h-10 w-full rounded-xl bg-slate-800/80 text-sm font-medium text-white">
           恢复默认菜单
