@@ -301,6 +301,32 @@ function getResultTags(food) {
     .slice(0, 4);
 }
 
+function getFoodIcon(item, mode = 'meal') {
+  const text = [item?.name, item?.displayName, item?.place, ...(item?.type || []), ...(item?.tags || [])].filter(Boolean).join(' ');
+
+  if (mode === 'night') return '🍜';
+  if (mode === 'breakfast') {
+    if (/KFC|帕尼尼/.test(text)) return '🥪';
+    if (text.includes('粥')) return '🥣';
+    if (text.includes('包子')) return '🥟';
+    if (text.includes('面包')) return '🥐';
+    return '🍽️';
+  }
+
+  if (/汉堡|KFC|麦当劳/.test(text)) return '🍔';
+  if (/火锅|麻辣|烫|石锅/.test(text)) return '🍲';
+  if (/饺子|小笼|包子/.test(text)) return '🥟';
+  if (/面|拉面|小面|板面|米线|粉/.test(text)) return '🍜';
+  if (/饭|猪脚饭|炒饭|盒饭|盖饭|米饭/.test(text)) return '🍚';
+  return '🍽️';
+}
+
+function getHomeIcon({ isBreakfast, isLateNight }) {
+  if (isBreakfast) return '🥣';
+  if (isLateNight) return '🌙';
+  return '🍽️';
+}
+
 function getRecommendationMode(date = new Date()) {
   const totalMinutes = date.getHours() * 60 + date.getMinutes();
 
@@ -890,6 +916,7 @@ function RecommendPage({
   if (!isResultMode) {
     const isSinglePoolMode = isBreakfast || isLateNight;
     const singlePoolCount = isBreakfast ? candidateCount : instantCandidateCount;
+    const homeIcon = getHomeIcon({ isBreakfast, isLateNight });
     const headerLabel = isBreakfast ? '' : isLateNight ? '泡面夜宵' : '';
     const title = isBreakfast ? '早上好！' : isLateNight ? '夜宵吃什么？' : '今天吃什么？';
     const subtitle = isBreakfast ? '早上先垫一口。' : isLateNight ? '别想了，泡面局。' : '别想了，交给随机。';
@@ -901,6 +928,9 @@ function RecommendPage({
       <section className="flex min-h-[calc(100vh-8rem)] flex-col pb-3">
         <div className="flex flex-1 flex-col justify-center py-6">
           <header className="text-center">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-[1.35rem] border border-amber-200/15 bg-white/[0.045] text-3xl shadow-glow">
+              {homeIcon}
+            </div>
             {headerLabel && <p className="text-sm font-semibold text-amber-200">{headerLabel}</p>}
             <h1 className="mt-2 text-[2.35rem] font-bold leading-tight tracking-normal text-white">
               {title}
@@ -982,6 +1012,7 @@ function RecommendPage({
       ) : (
         <ResultCard
           food={currentFood}
+          mode={isBreakfast ? 'breakfast' : 'meal'}
           resultContext={isBreakfast ? '早餐' : [selectedScene, mealInfo?.label].filter(Boolean).join(' · ')}
           swipeDirection={swipeDirection}
           isSwipingOut={isSwipingOut}
@@ -999,6 +1030,21 @@ function getSwipeClass({ swipeDirection, isSwipingOut, isBouncing }) {
   if (isSwipingOut && swipeDirection === 'down') return 'translate-y-1 opacity-0';
   if (isBouncing && swipeDirection === 'down') return 'translate-y-2 opacity-95';
   return 'translate-y-0 scale-100 opacity-100';
+}
+
+function FoodVisualBadge({ icon, quiet = false }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-2xl shadow-glow ${
+        quiet
+          ? 'border-white/8 bg-white/[0.045]'
+          : 'border-amber-200/20 bg-amber-300/[0.12]'
+      }`}
+    >
+      {icon}
+    </span>
+  );
 }
 
 function InstantNoodleCard({ noodle, swipeDirection, isSwipingOut, isBouncing, onRestart, onBackHome }) {
@@ -1019,6 +1065,7 @@ function InstantNoodleCard({ noodle, swipeDirection, isSwipingOut, isBouncing, o
   }
 
   const tagItems = (noodle.tags || []).slice(0, 4);
+  const icon = getFoodIcon(noodle, 'night');
 
   return (
     <article
@@ -1042,11 +1089,15 @@ function InstantNoodleCard({ noodle, swipeDirection, isSwipingOut, isBouncing, o
       <div>
         <div className="flex items-center justify-between gap-3 pl-10">
           <p className="text-sm font-medium text-amber-200">泡面夜宵</p>
-          {noodle.favorite && <span className="rounded-full bg-amber-300/90 px-2.5 py-1 text-xs font-bold text-slate-950">已常吃</span>}
+          <div className="flex items-center gap-2">
+            {noodle.favorite && <span className="rounded-full bg-amber-300/90 px-2.5 py-1 text-xs font-bold text-slate-950">已常吃</span>}
+            <FoodVisualBadge icon={icon} />
+          </div>
         </div>
       </div>
 
       <div className="max-w-full py-6">
+        <p className="mb-3 text-sm font-semibold text-amber-100/60">🌙 ♨️</p>
         <h2 className="max-w-full break-words text-5xl font-bold leading-tight tracking-normal text-white">
           {noodle.displayName || noodle.name}
         </h2>
@@ -1067,7 +1118,7 @@ function InstantNoodleCard({ noodle, swipeDirection, isSwipingOut, isBouncing, o
   );
 }
 
-function ResultCard({ food, resultContext, swipeDirection, isSwipingOut, isBouncing, onRestart, onBackHome }) {
+function ResultCard({ food, mode, resultContext, swipeDirection, isSwipingOut, isBouncing, onRestart, onBackHome }) {
   if (!food) {
     return (
       <div className="flex min-h-[70vh] flex-1 flex-col items-center justify-center rounded-[2rem] border border-dashed border-white/14 bg-white/[0.035] p-6 text-center">
@@ -1088,6 +1139,7 @@ function ResultCard({ food, resultContext, swipeDirection, isSwipingOut, isBounc
   const location = getResultLocation(food);
   const typeItems = (food.type || []).slice(0, 3);
   const tagItems = getResultTags(food);
+  const icon = getFoodIcon(food, mode);
 
   return (
     <article
@@ -1111,7 +1163,10 @@ function ResultCard({ food, resultContext, swipeDirection, isSwipingOut, isBounc
       <div>
         <div className="flex items-center justify-between gap-3 pl-10">
           <p className="text-sm font-medium text-amber-200">{resultContext || '这顿吃'}</p>
-          {food.favorite && <span className="rounded-full bg-amber-300/90 px-2.5 py-1 text-xs font-bold text-slate-950">已常吃</span>}
+          <div className="flex items-center gap-2">
+            {food.favorite && <span className="rounded-full bg-amber-300/90 px-2.5 py-1 text-xs font-bold text-slate-950">已常吃</span>}
+            <FoodVisualBadge icon={icon} />
+          </div>
         </div>
       </div>
 
