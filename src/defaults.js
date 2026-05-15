@@ -128,17 +128,6 @@ export const defaultBreakfastFoods = breakfastItems.map(([name, tags, reason, me
 
 export const defaultInstantNoodles = [
   {
-    id: 'instant-0',
-    brand: '宿舍',
-    name: '泡面',
-    displayName: '泡面',
-    type: ['泡面'],
-    tags: ['热乎', '便宜', '快速解决'],
-    reason: '都这个点了，一碗先顶住。',
-    weight: 5,
-    enabled: true,
-  },
-  {
     id: 'instant-1',
     brand: '康师傅',
     name: '康师傅老坛酸菜牛肉面',

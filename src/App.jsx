@@ -86,6 +86,23 @@ function readSavedData() {
   return null;
 }
 
+function isLegacyGenericInstantNoodle(item) {
+  if (!item || typeof item !== 'object') return false;
+
+  const name = typeof item.name === 'string' ? item.name.trim() : '';
+  const displayName = typeof item.displayName === 'string' ? item.displayName.trim() : '';
+  const reason = typeof item.reason === 'string' ? item.reason.trim() : '';
+  const tags = Array.isArray(item.tags) ? item.tags : [];
+  const legacyTags = ['热乎', '便宜', '快速解决'];
+
+  return (
+    name === '泡面' &&
+    (!displayName || displayName === '泡面') &&
+    reason === '都这个点了，一碗先顶住。' &&
+    legacyTags.every((tag) => tags.includes(tag))
+  );
+}
+
 function getInitialFoods() {
   const saved = readSavedData();
   if ((saved?.version === 1 || saved?.version === 2) && Array.isArray(saved.foods)) {
@@ -107,12 +124,14 @@ function getInitialInstantNoodles() {
 
 function normalizeFoods(foods) {
   return foods
+    .filter((food) => !isLegacyGenericInstantNoodle(food))
     .map((food, index) => normalizeFood(food, index))
     .filter(Boolean);
 }
 
 function normalizePoolFoods(items) {
   return items
+    .filter((item) => !isLegacyGenericInstantNoodle(item))
     .map((item, index) => normalizePoolFood(item, index))
     .filter(Boolean);
 }
@@ -120,8 +139,9 @@ function normalizePoolFoods(items) {
 function mergeDefaultPool(defaultItems, savedItems, normalizer) {
   if (!Array.isArray(savedItems)) return normalizePoolFoods(defaultItems);
 
-  const savedById = new Map(savedItems.filter((item) => item?.id).map((item) => [item.id, item]));
+  const savedById = new Map(savedItems.filter((item) => item?.id && !isLegacyGenericInstantNoodle(item)).map((item) => [item.id, item]));
   return defaultItems
+    .filter((item) => !isLegacyGenericInstantNoodle(item))
     .map((item, index) => {
       const saved = savedById.get(item.id);
       return normalizer(
@@ -330,11 +350,7 @@ function getHomeIcon({ isBreakfast, isLateNight }) {
 function getRecommendationMode(date = new Date()) {
   const totalMinutes = date.getHours() * 60 + date.getMinutes();
 
-  if (totalMinutes >= 6 * 60 && totalMinutes < 9 * 60 + 30) {
-    return 'breakfast';
-  }
-
-  if (totalMinutes >= 9 * 60 + 30 && totalMinutes < 21 * 60 + 30) {
+  if (totalMinutes >= 6 * 60 && totalMinutes < 21 * 60 + 30) {
     return 'meal';
   }
 
@@ -394,9 +410,10 @@ function App() {
   const recommendationMode = getRecommendationMode(now);
   const isBreakfast = recommendationMode === 'breakfast';
   const isLateNight = recommendationMode === 'late-night';
+  const isMeal = recommendationMode === 'meal';
   const breakfastPool = breakfastFoods.filter((food) => food.enabled);
   const recommendationPool =
-    recommendationMode === 'meal' && selectedScene
+    isMeal && selectedScene
       ? foods.filter((food) => food.enabled && food.scene === selectedScene && food.tags.includes('正餐') && !food.tags.includes('早餐'))
       : [];
   const activeFoodPool = isBreakfast ? breakfastPool : recommendationPool;
@@ -445,7 +462,7 @@ function App() {
     setRoundMealInfo(null);
     setIsResultMode(false);
 
-    if (recommendationMode !== 'meal') {
+    if (recommendationMode === 'late-night') {
       setSelectedScene('');
     }
   }, [recommendationMode]);
@@ -580,7 +597,7 @@ function App() {
   };
 
   const randomRecommend = () => {
-    if (!isBreakfast && !selectedScene) {
+    if (isMeal && !selectedScene) {
       showToast('先选到店或宿舍，再随机。');
       return;
     }
@@ -914,8 +931,6 @@ function RecommendPage({
   };
 
   if (!isResultMode) {
-    const isSinglePoolMode = isBreakfast || isLateNight;
-    const singlePoolCount = isBreakfast ? candidateCount : instantCandidateCount;
     const homeIcon = getHomeIcon({ isBreakfast, isLateNight });
     const headerLabel = isBreakfast ? '' : isLateNight ? '泡面夜宵' : '';
     const title = isBreakfast ? '早上好！' : isLateNight ? '夜宵吃什么？' : '今天吃什么？';
@@ -938,15 +953,15 @@ function RecommendPage({
             <p className="mt-3 text-sm font-normal text-slate-400">{subtitle}</p>
           </header>
 
-          {isSinglePoolMode ? (
+          {isLateNight ? (
             <>
               {countText && <p className="mt-10 text-center text-sm font-semibold text-slate-400">{countText}</p>}
               <button
                 type="button"
                 onClick={onRandom}
-                disabled={singlePoolCount === 0}
+                disabled={instantCandidateCount === 0}
                 className={`mx-auto ${countText ? 'mt-4' : 'mt-10'} h-16 w-full max-w-[19rem] rounded-[1.4rem] text-xl font-bold shadow-glow transition active:scale-[0.99] ${
-                  singlePoolCount === 0 ? 'cursor-not-allowed bg-slate-700 text-slate-400 shadow-none' : 'bg-amber-400 text-slate-950'
+                  instantCandidateCount === 0 ? 'cursor-not-allowed bg-slate-700 text-slate-400 shadow-none' : 'bg-amber-400 text-slate-950'
                 }`}
               >
                 {buttonText}
@@ -974,11 +989,12 @@ function RecommendPage({
 
               {selectedScene && (
                 <>
+                  <p className="mt-7 text-center text-sm font-semibold text-slate-400">当前可选：{candidateCount} 个</p>
                   <button
                     type="button"
                     onClick={onRandom}
                     disabled={candidateCount === 0}
-                    className={`mx-auto mt-7 h-16 w-full max-w-[19rem] rounded-[1.4rem] text-xl font-bold shadow-glow transition active:scale-[0.99] ${
+                    className={`mx-auto mt-4 h-16 w-full max-w-[19rem] rounded-[1.4rem] text-xl font-bold shadow-glow transition active:scale-[0.99] ${
                       candidateCount === 0 ? 'cursor-not-allowed bg-slate-700 text-slate-400 shadow-none' : 'bg-amber-400 text-slate-950'
                     }`}
                   >
@@ -986,6 +1002,7 @@ function RecommendPage({
                   </button>
                 </>
               )}
+              {!selectedScene && <p className="mt-7 text-center text-sm text-slate-500">请选择到店或宿舍</p>}
             </>
           )}
         </div>
