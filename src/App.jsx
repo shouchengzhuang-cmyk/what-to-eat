@@ -122,7 +122,18 @@ function mergeDefaultPool(defaultItems, savedItems, normalizer) {
 
   const savedById = new Map(savedItems.filter((item) => item?.id).map((item) => [item.id, item]));
   return defaultItems
-    .map((item, index) => normalizer({ ...item, ...savedById.get(item.id), id: item.id }, index))
+    .map((item, index) => {
+      const saved = savedById.get(item.id);
+      return normalizer(
+        {
+          ...item,
+          favorite: saved?.favorite ?? item.favorite,
+          enabled: saved?.enabled ?? item.enabled,
+          avoidUntil: saved?.avoidUntil ?? item.avoidUntil,
+        },
+        index,
+      );
+    })
     .filter(Boolean);
 }
 
@@ -334,10 +345,8 @@ function App() {
   const [isResultMode, setIsResultMode] = useState(false);
   const [currentFood, setCurrentFood] = useState(null);
   const [currentInstantNoodle, setCurrentInstantNoodle] = useState(null);
-  const [lastFoodId, setLastFoodId] = useState(null);
-  const [lastInstantNoodleId, setLastInstantNoodleId] = useState(null);
-  const [skippedFoodIds, setSkippedFoodIds] = useState([]);
-  const [skippedInstantNoodleIds, setSkippedInstantNoodleIds] = useState([]);
+  const [historyItems, setHistoryItems] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
   const [toast, setToast] = useState({ id: 0, message: '', visible: false });
   const [editingFood, setEditingFood] = useState(null);
   const [settingsMessage, setSettingsMessage] = useState('');
@@ -386,8 +395,8 @@ function App() {
   useEffect(() => {
     setCurrentFood(null);
     setCurrentInstantNoodle(null);
-    setSkippedFoodIds([]);
-    setSkippedInstantNoodleIds([]);
+    setHistoryItems([]);
+    setHistoryIndex(-1);
     setRoundMealInfo(null);
     setIsResultMode(false);
 
@@ -435,78 +444,92 @@ function App() {
     setCurrentFood(null);
     setCurrentInstantNoodle(null);
     setIsResultMode(false);
-    setSkippedFoodIds([]);
-    setSkippedInstantNoodleIds([]);
+    setHistoryItems([]);
+    setHistoryIndex(-1);
     setRoundMealInfo(null);
     clearToast();
   };
 
-  const pickNextFood = (excludedFoodIds = skippedFoodIds, excludedFoodId = lastFoodId) => {
-    const available = activeFoodPool.filter((food) => !excludedFoodIds.includes(food.id));
-    const pool = available.length > 1 ? available.filter((food) => food.id !== excludedFoodId) : available;
-    const next = weightedRandomPick(pool);
-    return { next };
-  };
+  const getActivePool = () => (isLateNight ? instantNoodlePool : activeFoodPool);
 
-  const pickNextInstantNoodle = (excludedIds = skippedInstantNoodleIds, excludedId = lastInstantNoodleId) => {
-    const available = instantNoodlePool.filter((noodle) => !excludedIds.includes(noodle.id));
-    const pool = available.length > 1 ? available.filter((noodle) => noodle.id !== excludedId) : available;
-    return weightedRandomPick(pool);
-  };
+  const getCurrentRecommendation = () => currentInstantNoodle || currentFood;
 
-  const randomInstantNoodle = ({ resetSkipped = false } = {}) => {
-    const nextSkippedIds = resetSkipped ? [] : skippedInstantNoodleIds;
-    const next = pickNextInstantNoodle(nextSkippedIds, lastInstantNoodleId);
-
-    if (!next) {
+  const showRecommendation = (item) => {
+    if (isLateNight) {
+      setCurrentInstantNoodle(item || null);
+      setCurrentFood(null);
+    } else {
+      setCurrentFood(item || null);
       setCurrentInstantNoodle(null);
-      setIsResultMode(nextSkippedIds.length > 0);
+    }
+  };
+
+  const pickRandomFromActivePool = (excludedId = getCurrentRecommendation()?.id) => {
+    const pool = getActivePool();
+    const candidates = pool.length > 1 ? pool.filter((item) => item.id !== excludedId) : pool;
+    return weightedRandomPick(candidates);
+  };
+
+  const commitRecommendation = (item, { resetHistory = false } = {}) => {
+    if (!item) {
+      showRecommendation(null);
+      setIsResultMode(historyItems.length > 0);
       showToast('没有可推荐的了');
       return;
     }
 
-    if (resetSkipped) {
-      setSkippedInstantNoodleIds([]);
-    }
-    setCurrentInstantNoodle(next);
-    setCurrentFood(null);
+    showRecommendation(item);
     setIsResultMode(true);
-    setLastInstantNoodleId(next.id);
+    if (resetHistory) {
+      setHistoryItems([item]);
+      setHistoryIndex(0);
+    } else {
+      setHistoryItems((current) => {
+        const next = current.slice(0, historyIndex + 1);
+        next.push(item);
+        setHistoryIndex(next.length - 1);
+        return next;
+      });
+    }
     showToast('');
   };
 
   const randomRecommend = ({ resetSkipped = false } = {}) => {
-    if (isLateNight) {
-      randomInstantNoodle({ resetSkipped });
-      return;
-    }
-
     if (!isBreakfast && !selectedScene) {
       showToast('先选到店或宿舍，再随机。');
       return;
     }
 
-    const nextSkippedFoodIds = resetSkipped ? [] : skippedFoodIds;
-    const nextMealInfo = getMealInfoByMode(recommendationMode);
-    const mealInfo = resetSkipped ? nextMealInfo : roundMealInfo;
-    const { next } = pickNextFood(nextSkippedFoodIds, lastFoodId, mealInfo);
+    setRoundMealInfo(getMealInfoByMode(recommendationMode));
+    commitRecommendation(pickRandomFromActivePool(null), { resetHistory: true });
+  };
 
-    if (!next) {
-      setCurrentFood(null);
-      setIsResultMode(nextSkippedFoodIds.length > 0);
-      showToast('没有可推荐的了');
-      return;
+  const resolveHistoryItem = (item) => {
+    if (!item) return null;
+    return getActivePool().find((poolItem) => poolItem.id === item.id) || item;
+  };
+
+  const goToNextRecommendation = () => {
+    if (historyIndex < historyItems.length - 1) {
+      const next = resolveHistoryItem(historyItems[historyIndex + 1]);
+      setHistoryIndex((current) => current + 1);
+      showRecommendation(next);
+      return true;
     }
 
-    if (resetSkipped) {
-      setSkippedFoodIds([]);
-      setRoundMealInfo(nextMealInfo);
-    }
-    setCurrentFood(next);
-    setCurrentInstantNoodle(null);
-    setIsResultMode(true);
-    setLastFoodId(next.id);
-    showToast('');
+    const next = pickRandomFromActivePool();
+    if (!next) return false;
+    commitRecommendation(next);
+    return true;
+  };
+
+  const goToPreviousRecommendation = () => {
+    if (historyIndex <= 0) return false;
+
+    const previous = resolveHistoryItem(historyItems[historyIndex - 1]);
+    setHistoryIndex((current) => current - 1);
+    showRecommendation(previous);
+    return true;
   };
 
   const updateFood = (id, patch) => {
@@ -519,37 +542,6 @@ function App() {
 
   const updateInstantNoodle = (id, patch) => {
     setInstantNoodles((current) => current.map((noodle) => (noodle.id === id ? { ...noodle, ...patch } : noodle)));
-  };
-
-  const skipCurrentFood = () => {
-    if (isLateNight) {
-      if (!currentInstantNoodle) return;
-      const nextSkippedIds = [...new Set([...skippedInstantNoodleIds, currentInstantNoodle.id])];
-      const next = pickNextInstantNoodle(nextSkippedIds, currentInstantNoodle.id);
-
-      setSkippedInstantNoodleIds(nextSkippedIds);
-      setCurrentInstantNoodle(next);
-      if (next) {
-        setLastInstantNoodleId(next.id);
-      } else {
-        setIsResultMode(true);
-        showToast('没有可推荐的了');
-      }
-      return;
-    }
-
-    if (!currentFood) return;
-    const nextSkippedFoodIds = [...new Set([...skippedFoodIds, currentFood.id])];
-    const { next } = pickNextFood(nextSkippedFoodIds, currentFood.id);
-
-    setSkippedFoodIds(nextSkippedFoodIds);
-    setCurrentFood(next);
-    if (next) {
-      setLastFoodId(next.id);
-    } else {
-      setIsResultMode(true);
-      showToast('bro，这一轮快被你划完了，重新开始吧。');
-    }
   };
 
   const toggleCurrentFavorite = () => {
@@ -625,8 +617,8 @@ function App() {
     setCurrentFood(null);
     setCurrentInstantNoodle(null);
     setIsResultMode(false);
-    setSkippedFoodIds([]);
-    setSkippedInstantNoodleIds([]);
+    setHistoryItems([]);
+    setHistoryIndex(-1);
     setRoundMealInfo(null);
     setSelectedScene('');
     setSettingsMessage('已恢复默认菜单');
@@ -669,12 +661,14 @@ function App() {
               setCurrentFood(null);
               setCurrentInstantNoodle(null);
               setIsResultMode(false);
-              setSkippedFoodIds([]);
-              setSkippedInstantNoodleIds([]);
+              setHistoryItems([]);
+              setHistoryIndex(-1);
               setRoundMealInfo(null);
               clearToast();
             }}
-            onSkip={skipCurrentFood}
+            canGoPrevious={historyIndex > 0}
+            onNext={goToNextRecommendation}
+            onPrevious={goToPreviousRecommendation}
             onToggleFavorite={toggleCurrentFavorite}
           />
         )}
@@ -749,13 +743,17 @@ function RecommendPage({
   onRandom,
   onRestart,
   onBackHome,
-  onSkip,
+  canGoPrevious,
+  onNext,
+  onPrevious,
   onToggleFavorite,
 }) {
   const touchStartRef = useRef(null);
   const lastTapTimeRef = useRef(0);
   const lastFavoriteToggleAtRef = useRef(0);
-  const [isSwipingAway, setIsSwipingAway] = useState(false);
+  const [swipeDirection, setSwipeDirection] = useState(null);
+  const [isSwipingOut, setIsSwipingOut] = useState(false);
+  const [isBouncing, setIsBouncing] = useState(false);
 
   const toggleFavoriteOnce = () => {
     const now = Date.now();
@@ -775,22 +773,41 @@ function RecommendPage({
   const handleResultTouchEnd = (event) => {
     const start = touchStartRef.current;
     touchStartRef.current = null;
-    if (!start || isSwipingAway) return;
+    if (!start || isSwipingOut || isBouncing) return;
 
     const touch = event.changedTouches[0];
-    const distanceY = start.y - touch.clientY;
+    const deltaY = touch.clientY - start.y;
+    const distanceY = Math.abs(deltaY);
     const distanceX = Math.abs(touch.clientX - start.x);
 
-    if (distanceY > 44 && distanceY > distanceX * 1.25) {
-      setIsSwipingAway(true);
+    if (distanceY > 50 && distanceY > distanceX * 1.25) {
+      const nextDirection = deltaY < 0 ? 'up' : 'down';
+
+      if (nextDirection === 'down' && !canGoPrevious) {
+        setSwipeDirection('down');
+        setIsBouncing(true);
+        window.setTimeout(() => {
+          setIsBouncing(false);
+          setSwipeDirection(null);
+        }, 180);
+        return;
+      }
+
+      setSwipeDirection(nextDirection);
+      setIsSwipingOut(true);
       window.setTimeout(() => {
-        onSkip();
-        setIsSwipingAway(false);
-      }, 300);
+        if (nextDirection === 'up') {
+          onNext();
+        } else {
+          onPrevious();
+        }
+        setIsSwipingOut(false);
+        setSwipeDirection(null);
+      }, 220);
       return;
     }
 
-    if (Math.abs(distanceY) > 14 || distanceX > 14) return;
+    if (distanceY > 14 || distanceX > 14) return;
 
     const now = Date.now();
     if (now - lastTapTimeRef.current < 320) {
@@ -895,7 +912,9 @@ function RecommendPage({
       {isLateNight ? (
         <InstantNoodleCard
           noodle={currentInstantNoodle}
-          isSwipingAway={isSwipingAway}
+          swipeDirection={swipeDirection}
+          isSwipingOut={isSwipingOut}
+          isBouncing={isBouncing}
           onRestart={onRestart}
           onBackHome={onBackHome}
         />
@@ -903,7 +922,9 @@ function RecommendPage({
         <ResultCard
           food={currentFood}
           resultContext={isBreakfast ? '早餐' : [selectedScene, mealInfo?.label].filter(Boolean).join(' · ')}
-          isSwipingAway={isSwipingAway}
+          swipeDirection={swipeDirection}
+          isSwipingOut={isSwipingOut}
+          isBouncing={isBouncing}
           onRestart={onRestart}
           onBackHome={onBackHome}
         />
@@ -912,7 +933,14 @@ function RecommendPage({
   );
 }
 
-function InstantNoodleCard({ noodle, isSwipingAway, onRestart, onBackHome }) {
+function getSwipeClass({ swipeDirection, isSwipingOut, isBouncing }) {
+  if (isSwipingOut && swipeDirection === 'up') return '-translate-y-[110%] scale-[0.98] opacity-0';
+  if (isSwipingOut && swipeDirection === 'down') return 'translate-y-[110%] scale-[0.98] opacity-0';
+  if (isBouncing && swipeDirection === 'down') return 'translate-y-8 scale-[0.995] opacity-95';
+  return 'translate-y-0 scale-100 opacity-100';
+}
+
+function InstantNoodleCard({ noodle, swipeDirection, isSwipingOut, isBouncing, onRestart, onBackHome }) {
   if (!noodle) {
     return (
       <div className="flex min-h-[70vh] flex-1 flex-col items-center justify-center rounded-[2rem] border border-dashed border-white/14 bg-white/[0.035] p-6 text-center">
@@ -933,9 +961,11 @@ function InstantNoodleCard({ noodle, isSwipingAway, onRestart, onBackHome }) {
 
   return (
     <article
-      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-300 ${
-        isSwipingAway ? '-translate-y-[120%] opacity-0' : 'translate-y-0 opacity-100'
-      }`}
+      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-200 ease-out ${getSwipeClass({
+        swipeDirection,
+        isSwipingOut,
+        isBouncing,
+      })}`}
     >
       <button
         type="button"
@@ -976,7 +1006,7 @@ function InstantNoodleCard({ noodle, isSwipingAway, onRestart, onBackHome }) {
   );
 }
 
-function ResultCard({ food, resultContext, isSwipingAway, onRestart, onBackHome }) {
+function ResultCard({ food, resultContext, swipeDirection, isSwipingOut, isBouncing, onRestart, onBackHome }) {
   if (!food) {
     return (
       <div className="flex min-h-[70vh] flex-1 flex-col items-center justify-center rounded-[2rem] border border-dashed border-white/14 bg-white/[0.035] p-6 text-center">
@@ -1000,9 +1030,11 @@ function ResultCard({ food, resultContext, isSwipingAway, onRestart, onBackHome 
 
   return (
     <article
-      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-300 ${
-        isSwipingAway ? '-translate-y-[120%] opacity-0' : 'translate-y-0 opacity-100'
-      }`}
+      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-200 ease-out ${getSwipeClass({
+        swipeDirection,
+        isSwipingOut,
+        isBouncing,
+      })}`}
     >
       <button
         type="button"
