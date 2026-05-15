@@ -311,11 +311,11 @@ function getResultTags(food) {
 function getRecommendationMode(date = new Date()) {
   const totalMinutes = date.getHours() * 60 + date.getMinutes();
 
-  if (totalMinutes >= 6 * 60 && totalMinutes < 10 * 60) {
+  if (totalMinutes >= 6 * 60 && totalMinutes < 9 * 60 + 30) {
     return 'breakfast';
   }
 
-  if (totalMinutes >= 10 * 60 && totalMinutes < 21 * 60 + 30) {
+  if (totalMinutes >= 9 * 60 + 30 && totalMinutes < 21 * 60 + 30) {
     return 'meal';
   }
 
@@ -821,7 +821,7 @@ function RecommendPage({
   if (!isResultMode) {
     const isSinglePoolMode = isBreakfast || isLateNight;
     const singlePoolCount = isBreakfast ? candidateCount : instantCandidateCount;
-    const headerLabel = isBreakfast ? '' : isLateNight ? '泡面夜宵' : selectedScene ? getGreeting() : '先选个场景';
+    const headerLabel = isBreakfast ? '' : isLateNight ? '泡面夜宵' : '';
     const title = isBreakfast ? '早上好！' : isLateNight ? '夜宵吃什么？' : '今天吃什么？';
     const subtitle = isBreakfast ? '早上先垫一口。' : isLateNight ? '别想了，泡面局。' : '别想了，交给随机。';
     const buttonText = isBreakfast ? '随机一份' : '随机一碗';
@@ -875,27 +875,19 @@ function RecommendPage({
 
               {selectedScene && (
                 <>
-                  <p className="mt-7 text-center text-sm font-semibold text-slate-400">当前可选：{candidateCount} 个</p>
                   <button
                     type="button"
                     onClick={onRandom}
                     disabled={candidateCount === 0}
-                    className={`mx-auto mt-4 h-16 w-full max-w-[19rem] rounded-[1.4rem] text-xl font-bold shadow-glow transition active:scale-[0.99] ${
+                    className={`mx-auto mt-7 h-16 w-full max-w-[19rem] rounded-[1.4rem] text-xl font-bold shadow-glow transition active:scale-[0.99] ${
                       candidateCount === 0 ? 'cursor-not-allowed bg-slate-700 text-slate-400 shadow-none' : 'bg-amber-400 text-slate-950'
                     }`}
                   >
                     随机一下
                   </button>
-                  <p className="mt-3 text-center text-xs text-slate-500">让它替你决定，别再纠结。</p>
                 </>
               )}
             </>
-          )}
-
-          {!isSinglePoolMode && (
-            <p className="mt-6 text-center text-xs text-slate-600">
-              {selectedScene ? `${selectedScene} · 当前时间是${homeMealInfo.label}` : '先选个场景'}
-            </p>
           )}
         </div>
       </section>
