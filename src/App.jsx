@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { defaultFoods, defaultInstantNoodles, tagGroups } from './defaults';
+import { defaultBreakfastFoods, defaultFoods, defaultInstantNoodles, tagGroups } from './defaults';
 
 const STORAGE_KEY = 'what-to-eat-data-v1';
 const tabs = [
@@ -235,24 +235,30 @@ function getResultTags(food) {
     .slice(0, 4);
 }
 
-function getMealInfoByTime(date = new Date()) {
+function getRecommendationMode(date = new Date()) {
   const totalMinutes = date.getHours() * 60 + date.getMinutes();
 
   if (totalMinutes >= 6 * 60 && totalMinutes < 10 * 60) {
-    return { tags: ['早餐'], label: '早餐', hint: '现在适合来点早餐。' };
+    return 'breakfast';
   }
 
-  if (totalMinutes >= 10 * 60 && totalMinutes < 21 * 60) {
+  if (totalMinutes >= 10 * 60 && totalMinutes < 21 * 60 + 30) {
+    return 'meal';
+  }
+
+  return 'late-night';
+}
+
+function getMealInfoByMode(mode) {
+  if (mode === 'breakfast') {
+    return { tags: ['早餐'], label: '早餐', hint: '早上先垫一口。' };
+  }
+
+  if (mode === 'meal') {
     return { tags: ['正餐'], label: '正餐', hint: '这一顿交给它决定。' };
   }
 
   return { tags: ['夜宵'], label: '夜宵', hint: '这个点就别太正式了，来点夜宵。' };
-}
-
-function isLateNightNow(date = new Date()) {
-  const hour = date.getHours();
-  const minute = date.getMinutes();
-  return hour > 21 || (hour === 21 && minute >= 30);
 }
 
 function App() {
@@ -272,8 +278,15 @@ function App() {
   const [editingFood, setEditingFood] = useState(null);
   const [settingsMessage, setSettingsMessage] = useState('');
 
-  const isLateNight = isLateNightNow(now);
-  const recommendationPool = selectedScene ? foods.filter((food) => food.enabled && food.scene === selectedScene) : [];
+  const recommendationMode = getRecommendationMode(now);
+  const isBreakfast = recommendationMode === 'breakfast';
+  const isLateNight = recommendationMode === 'late-night';
+  const breakfastPool = defaultBreakfastFoods.filter((food) => food.enabled);
+  const recommendationPool =
+    recommendationMode === 'meal' && selectedScene
+      ? foods.filter((food) => food.enabled && food.scene === selectedScene && food.tags.includes('正餐') && !food.tags.includes('早餐'))
+      : [];
+  const activeFoodPool = isBreakfast ? breakfastPool : recommendationPool;
   const instantNoodlePool = defaultInstantNoodles.filter((noodle) => noodle.enabled);
 
   useEffect(() => {
@@ -291,23 +304,23 @@ function App() {
   }, [foods]);
 
   useEffect(() => {
-    if (currentFood) {
+    if (currentFood && !currentFood.id?.startsWith('breakfast-')) {
       setCurrentFood(foods.find((food) => food.id === currentFood.id) || null);
     }
   }, [foods, currentFood]);
 
   useEffect(() => {
-    if (isLateNight) {
-      setSelectedScene('');
-      setCurrentFood(null);
-      setSkippedFoodIds([]);
-      setRoundMealInfo(null);
-      return;
-    }
-
+    setCurrentFood(null);
     setCurrentInstantNoodle(null);
+    setSkippedFoodIds([]);
     setSkippedInstantNoodleIds([]);
-  }, [isLateNight]);
+    setRoundMealInfo(null);
+    setIsResultMode(false);
+
+    if (recommendationMode !== 'meal') {
+      setSelectedScene('');
+    }
+  }, [recommendationMode]);
 
   useEffect(() => {
     if (!toast.message) return undefined;
@@ -354,8 +367,8 @@ function App() {
     clearToast();
   };
 
-  const pickNextFood = (excludedFoodIds = skippedFoodIds, excludedFoodId = lastFoodId, mealInfo = roundMealInfo) => {
-    const available = recommendationPool.filter((food) => !excludedFoodIds.includes(food.id));
+  const pickNextFood = (excludedFoodIds = skippedFoodIds, excludedFoodId = lastFoodId) => {
+    const available = activeFoodPool.filter((food) => !excludedFoodIds.includes(food.id));
     const pool = available.length > 1 ? available.filter((food) => food.id !== excludedFoodId) : available;
     const next = weightedRandomPick(pool);
     return { next };
@@ -394,13 +407,13 @@ function App() {
       return;
     }
 
-    if (!selectedScene) {
+    if (!isBreakfast && !selectedScene) {
       showToast('先选到店或宿舍，再随机。');
       return;
     }
 
     const nextSkippedFoodIds = resetSkipped ? [] : skippedFoodIds;
-    const nextMealInfo = getMealInfoByTime();
+    const nextMealInfo = getMealInfoByMode(recommendationMode);
     const mealInfo = resetSkipped ? nextMealInfo : roundMealInfo;
     const { next } = pickNextFood(nextSkippedFoodIds, lastFoodId, mealInfo);
 
@@ -458,7 +471,7 @@ function App() {
   };
 
   const toggleCurrentFavorite = () => {
-    if (!currentFood) return;
+    if (!currentFood || isBreakfast) return;
     const nextFavorite = !currentFood.favorite;
     updateFood(currentFood.id, { favorite: nextFavorite });
     showToast(nextFavorite ? '已设为常吃' : '已取消常吃');
@@ -542,16 +555,18 @@ function App() {
       <main className="flex-1">
         {activeTab === 'recommend' && (
           <RecommendPage
+            recommendationMode={recommendationMode}
+            isBreakfast={isBreakfast}
             isLateNight={isLateNight}
             isResultMode={isResultMode}
             currentFood={currentFood}
             currentInstantNoodle={currentInstantNoodle}
             selectedScene={selectedScene}
-            candidateCount={recommendationPool.length}
+            candidateCount={activeFoodPool.length}
             instantCandidateCount={instantNoodlePool.length}
             onSelectScene={selectScene}
             mealInfo={roundMealInfo}
-            homeMealInfo={getMealInfoByTime()}
+            homeMealInfo={getMealInfoByMode(recommendationMode)}
             onRandom={() => randomRecommend({ resetSkipped: true })}
             onRestart={() => randomRecommend({ resetSkipped: true })}
             onBackHome={() => {
@@ -570,6 +585,8 @@ function App() {
         {activeTab === 'library' && (
           <LibraryPage
             foods={foods}
+            breakfastFoods={defaultBreakfastFoods}
+            instantNoodles={defaultInstantNoodles}
             editingFood={editingFood}
             setEditingFood={setEditingFood}
             onSave={saveFood}
@@ -621,6 +638,8 @@ function App() {
 }
 
 function RecommendPage({
+  recommendationMode,
+  isBreakfast,
   isLateNight,
   isResultMode,
   currentFood,
@@ -643,6 +662,7 @@ function RecommendPage({
   const [isSwipingAway, setIsSwipingAway] = useState(false);
 
   const toggleFavoriteOnce = () => {
+    if (isBreakfast || isLateNight) return;
     const now = Date.now();
     if (now - lastFavoriteToggleAtRef.current < 350) return;
     lastFavoriteToggleAtRef.current = now;
@@ -676,7 +696,7 @@ function RecommendPage({
     }
 
     if (Math.abs(distanceY) > 14 || distanceX > 14) return;
-    if (isLateNight) return;
+    if (isBreakfast || isLateNight) return;
 
     const now = Date.now();
     if (now - lastTapTimeRef.current < 320) {
@@ -688,31 +708,40 @@ function RecommendPage({
   };
 
   if (!isResultMode) {
+    const isSinglePoolMode = isBreakfast || isLateNight;
+    const singlePoolCount = isBreakfast ? candidateCount : instantCandidateCount;
+    const headerLabel = isBreakfast ? '早餐' : isLateNight ? '泡面夜宵' : selectedScene ? getGreeting() : '先选个场景';
+    const title = isBreakfast ? '早餐吃什么？' : isLateNight ? '夜宵吃什么？' : '今天吃什么？';
+    const subtitle = isBreakfast ? '早上先垫一口。' : isLateNight ? '别想了，泡面局。' : '别想了，交给随机。';
+    const buttonText = isBreakfast ? '随机一份' : '随机一碗';
+    const countText = isBreakfast ? `当前早餐可选：${candidateCount} 个` : `当前泡面可选：${instantCandidateCount} 个`;
+    const footnote = isBreakfast ? '早餐只从早餐卡池里选。' : '夜宵有且只有泡面。';
+
     return (
       <section className="flex min-h-[calc(100vh-8rem)] flex-col pb-3">
         <div className="flex flex-1 flex-col justify-center py-6">
           <header className="text-center">
-            <p className="text-sm font-semibold text-amber-200">{isLateNight ? '泡面夜宵' : selectedScene ? getGreeting() : '先选个场景'}</p>
+            <p className="text-sm font-semibold text-amber-200">{headerLabel}</p>
             <h1 className="mt-2 text-[2.35rem] font-bold leading-tight tracking-normal text-white">
-              {isLateNight ? '夜宵吃什么？' : '今天吃什么？'}
+              {title}
             </h1>
-            <p className="mt-3 text-sm font-normal text-slate-400">{isLateNight ? '别想了，泡面局。' : '别想了，交给随机。'}</p>
+            <p className="mt-3 text-sm font-normal text-slate-400">{subtitle}</p>
           </header>
 
-          {isLateNight ? (
+          {isSinglePoolMode ? (
             <>
-              <p className="mt-10 text-center text-sm font-semibold text-slate-400">当前泡面可选：{instantCandidateCount} 个</p>
+              <p className="mt-10 text-center text-sm font-semibold text-slate-400">{countText}</p>
               <button
                 type="button"
                 onClick={onRandom}
-                disabled={instantCandidateCount === 0}
+                disabled={singlePoolCount === 0}
                 className={`mx-auto mt-4 h-16 w-full max-w-[19rem] rounded-[1.4rem] text-xl font-bold shadow-glow transition active:scale-[0.99] ${
-                  instantCandidateCount === 0 ? 'cursor-not-allowed bg-slate-700 text-slate-400 shadow-none' : 'bg-amber-400 text-slate-950'
+                  singlePoolCount === 0 ? 'cursor-not-allowed bg-slate-700 text-slate-400 shadow-none' : 'bg-amber-400 text-slate-950'
                 }`}
               >
-                随机一碗
+                {buttonText}
               </button>
-              <p className="mt-3 text-center text-xs text-slate-500">夜宵有且只有泡面。</p>
+              <p className="mt-3 text-center text-xs text-slate-500">{footnote}</p>
             </>
           ) : (
             <>
@@ -752,7 +781,7 @@ function RecommendPage({
             </>
           )}
 
-          {!isLateNight && (
+          {!isSinglePoolMode && (
             <p className="mt-6 text-center text-xs text-slate-600">
               {selectedScene ? `${selectedScene} · 当前时间是${homeMealInfo.label}` : '先选个场景'}
             </p>
@@ -766,7 +795,7 @@ function RecommendPage({
     <section
       onTouchStart={handleResultTouchStart}
       onTouchEnd={handleResultTouchEnd}
-      onDoubleClick={isLateNight ? undefined : toggleFavoriteOnce}
+      onDoubleClick={isBreakfast || isLateNight ? undefined : toggleFavoriteOnce}
       className="relative -mx-5 -mt-4 flex min-h-[calc(100vh-4.25rem)] touch-none select-none flex-col overflow-hidden px-5 pb-5 pt-6"
     >
       {isLateNight ? (
@@ -779,7 +808,8 @@ function RecommendPage({
       ) : (
         <ResultCard
           food={currentFood}
-          resultContext={[selectedScene, mealInfo?.label].filter(Boolean).join(' · ')}
+          resultContext={isBreakfast ? '早餐' : [selectedScene, mealInfo?.label].filter(Boolean).join(' · ')}
+          canFavorite={!isBreakfast}
           isSwipingAway={isSwipingAway}
           onRestart={onRestart}
           onBackHome={onBackHome}
@@ -855,7 +885,7 @@ function InstantNoodleCard({ noodle, isSwipingAway, onRestart, onBackHome }) {
   );
 }
 
-function ResultCard({ food, resultContext, isSwipingAway, onRestart, onBackHome }) {
+function ResultCard({ food, resultContext, canFavorite = true, isSwipingAway, onRestart, onBackHome }) {
   if (!food) {
     return (
       <div className="flex min-h-[70vh] flex-1 flex-col items-center justify-center rounded-[2rem] border border-dashed border-white/14 bg-white/[0.035] p-6 text-center">
@@ -897,7 +927,7 @@ function ResultCard({ food, resultContext, isSwipingAway, onRestart, onBackHome 
       <div>
         <div className="flex items-center justify-between gap-3 pl-10">
           <p className="text-sm font-medium text-amber-200">{resultContext || '这顿吃'}</p>
-          {food.favorite && <span className="rounded-full bg-amber-300/90 px-2.5 py-1 text-xs font-bold text-slate-950">已常吃</span>}
+          {canFavorite && food.favorite && <span className="rounded-full bg-amber-300/90 px-2.5 py-1 text-xs font-bold text-slate-950">已常吃</span>}
         </div>
       </div>
 
@@ -928,27 +958,39 @@ function ResultCard({ food, resultContext, isSwipingAway, onRestart, onBackHome 
       </div>
 
       <div className="space-y-2 text-center">
-        <p className="text-xs font-medium text-slate-500">上划换 / {food.favorite ? '双击取消' : '双击常吃'}</p>
+        <p className="text-xs font-medium text-slate-500">
+          {canFavorite ? `上划换 / ${food.favorite ? '双击取消' : '双击常吃'}` : '上划换'}
+        </p>
       </div>
     </article>
   );
 }
 
-function LibraryPage({ foods, editingFood, setEditingFood, onSave, onDelete, onToggleFavorite }) {
-  const [sceneView, setSceneView] = useState('到店');
-  const sceneCounts = {
-    all: foods.length,
-    到店: foods.filter((food) => food.scene === '到店').length,
-    宿舍: foods.filter((food) => food.scene === '宿舍').length,
-  };
-  const groupedFoods = sceneOptions.map((scene) => ({
-    scene,
-    foods: foods.filter((food) => food.scene === scene),
-  })).filter(({ scene }) => sceneView === '全部' || scene === sceneView);
-  const viewOptions = [
-    { id: '全部', label: '全部', count: sceneCounts.all },
-    { id: '到店', label: '到店', count: sceneCounts.到店 },
-    { id: '宿舍', label: '宿舍', count: sceneCounts.宿舍 },
+function LibraryPage({ foods, breakfastFoods, instantNoodles, editingFood, setEditingFood, onSave, onDelete, onToggleFavorite }) {
+  const libraryGroups = [
+    {
+      id: 'breakfast',
+      title: '早餐',
+      foods: breakfastFoods,
+      readOnly: true,
+    },
+    {
+      id: 'meal-store',
+      title: '正餐 · 到店',
+      foods: foods.filter((food) => food.scene === '到店' && food.tags.includes('正餐') && !food.tags.includes('早餐')),
+    },
+    {
+      id: 'meal-dorm',
+      title: '正餐 · 宿舍',
+      foods: foods.filter((food) => food.scene === '宿舍' && food.tags.includes('正餐') && !food.tags.includes('早餐')),
+    },
+    {
+      id: 'late-night',
+      title: '夜宵 · 泡面',
+      foods: instantNoodles,
+      readOnly: true,
+      instant: true,
+    },
   ];
 
   return (
@@ -962,42 +1004,32 @@ function LibraryPage({ foods, editingFood, setEditingFood, onSave, onDelete, onT
         新增食物
       </button>
 
-      <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-slate-950/70 p-1">
-        {viewOptions.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            onClick={() => setSceneView(option.id)}
-            className={`h-10 rounded-xl text-xs font-semibold transition ${
-              sceneView === option.id ? 'bg-amber-400 text-slate-950' : 'text-slate-400 active:bg-white/[0.06]'
-            }`}
-          >
-            {option.label} {option.count}
-          </button>
-        ))}
-      </div>
-
       {editingFood && <FoodForm food={editingFood} setFood={setEditingFood} onSave={onSave} onCancel={() => setEditingFood(null)} />}
 
       <div className="space-y-5">
-        {groupedFoods.map(({ scene, foods: sceneFoods }) => (
-          <section key={scene} className="space-y-2.5">
+        {libraryGroups.map((group) => (
+          <section key={group.id} className="space-y-2.5">
             <div className="flex items-center justify-between border-b border-white/8 pb-2">
-              <h2 className="text-base font-bold text-white">{scene}</h2>
-              <span className="text-xs font-semibold text-slate-500">{sceneFoods.length}</span>
+              <h2 className="text-base font-bold text-white">{group.title}</h2>
+              <span className="text-xs font-semibold text-slate-500">{group.foods.length}</span>
             </div>
-            {sceneFoods.length === 0 ? (
-              <EmptyState title={`暂无${scene}菜单`} text="可以从上方新增食物。" />
+            {group.foods.length === 0 ? (
+              <EmptyState title={`暂无${group.title}`} text="可以从上方新增食物。" />
             ) : (
-              sceneFoods.map((food) => (
-                <FoodCard
-                  key={food.id}
-                  food={food}
-                  setEditingFood={setEditingFood}
-                  onDelete={onDelete}
-                  onToggleFavorite={onToggleFavorite}
-                />
-              ))
+              group.foods.map((food) =>
+                group.instant ? (
+                  <InstantNoodleListCard key={food.id} noodle={food} />
+                ) : (
+                  <FoodCard
+                    key={food.id}
+                    food={food}
+                    readOnly={group.readOnly}
+                    setEditingFood={setEditingFood}
+                    onDelete={onDelete}
+                    onToggleFavorite={onToggleFavorite}
+                  />
+                ),
+              )
             )}
           </section>
         ))}
@@ -1006,7 +1038,7 @@ function LibraryPage({ foods, editingFood, setEditingFood, onSave, onDelete, onT
   );
 }
 
-function FoodCard({ food, setEditingFood, onDelete, onToggleFavorite }) {
+function FoodCard({ food, setEditingFood, onDelete, onToggleFavorite, readOnly = false }) {
   return (
     <article className="rounded-2xl border border-white/8 bg-white/[0.045] p-3">
       <div className="flex items-start justify-between gap-3">
@@ -1028,21 +1060,42 @@ function FoodCard({ food, setEditingFood, onDelete, onToggleFavorite }) {
           </span>
         )}
       </div>
-      <div className="mt-2.5 flex items-center gap-2">
-        <SmallButton onClick={() => onToggleFavorite(food)}>{food.favorite ? '取消常吃' : '常吃'}</SmallButton>
-        <SmallButton
-          onClick={() =>
-            setEditingFood(normalizeFood({
-              ...food,
-              tags: cleanTags(food.tags),
-            }))
-          }
-        >
-          编辑
-        </SmallButton>
-        <SmallButton danger onClick={() => onDelete(food.id)}>
-          删除
-        </SmallButton>
+      {!readOnly && (
+        <div className="mt-2.5 flex items-center gap-2">
+          <SmallButton onClick={() => onToggleFavorite(food)}>{food.favorite ? '取消常吃' : '常吃'}</SmallButton>
+          <SmallButton
+            onClick={() =>
+              setEditingFood(normalizeFood({
+                ...food,
+                tags: cleanTags(food.tags),
+              }))
+            }
+          >
+            编辑
+          </SmallButton>
+          <SmallButton danger onClick={() => onDelete(food.id)}>
+            删除
+          </SmallButton>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function InstantNoodleListCard({ noodle }) {
+  return (
+    <article className="rounded-2xl border border-white/8 bg-white/[0.045] p-3">
+      <div className="min-w-0">
+        <h2 className="break-words text-base font-semibold text-white">{noodle.displayName || noodle.name}</h2>
+        <p className="mt-1 text-xs leading-5 text-slate-500">{noodle.brand}</p>
+        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{noodle.reason}</p>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {(noodle.tags || []).slice(0, 5).map((tag) => (
+          <span key={tag} className="rounded-full bg-slate-800/80 px-2 py-0.5 text-[11px] font-medium text-slate-300">
+            {tag}
+          </span>
+        ))}
       </div>
     </article>
   );
