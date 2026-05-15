@@ -1102,10 +1102,32 @@ function LibraryPage({ foods, breakfastFoods, instantNoodles, editingFood, setEd
       instant: true,
     },
   ];
+  const jumpLinks = [
+    { label: '早餐', targetId: 'library-breakfast' },
+    { label: '到店', targetId: 'library-meal-store' },
+    { label: '宿舍', targetId: 'library-meal-dorm' },
+    { label: '泡面', targetId: 'library-late-night' },
+  ];
+
+  const scrollToGroup = (targetId) => {
+    document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <section className="space-y-3">
       <PageHeader title="菜单库" subtitle="整理那些你真的会吃的选项。" />
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        {jumpLinks.map((link) => (
+          <button
+            key={link.targetId}
+            type="button"
+            onClick={() => scrollToGroup(link.targetId)}
+            className="h-9 shrink-0 rounded-full bg-white/[0.06] px-4 text-xs font-semibold text-slate-200 transition active:bg-white/10"
+          >
+            {link.label}
+          </button>
+        ))}
+      </div>
       <button
         type="button"
         onClick={() => setEditingFood(emptyFood)}
@@ -1118,7 +1140,7 @@ function LibraryPage({ foods, breakfastFoods, instantNoodles, editingFood, setEd
 
       <div className="space-y-5">
         {libraryGroups.map((group) => (
-          <section key={group.id} className="space-y-2.5">
+          <section id={`library-${group.id}`} key={group.id} className="scroll-mt-4 space-y-2.5">
             <div className="flex items-center justify-between border-b border-white/8 pb-2">
               <h2 className="text-base font-bold text-white">{group.title}</h2>
               <span className="text-xs font-semibold text-slate-500">{group.foods.length}</span>
