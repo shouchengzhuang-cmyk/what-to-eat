@@ -46,11 +46,17 @@ const items = [
 ];
 
 const breakfastItems = [
-  ['芒果一楼包子', ['早餐', '到店', '包子', '清淡', '便宜', '快速解决'], '拿了就走，早餐很方便。', { displayName: '包子', place: '芒果一楼' }],
-  ['东区二楼小笼包', ['早餐', '到店', '包子', '清淡', '便宜', '快速解决'], '简单省心，适合早上垫一口。', { displayName: '小笼包', place: '东区二楼' }],
-  ['沙县馄饨', ['早餐', '到店', '小吃', '清淡', '便宜'], '轻一点也能吃饱。', { displayName: '馄饨', place: '沙县小吃' }],
-  ['灌饼', ['早餐', '宿舍', '小吃', '便宜', '快速解决'], '便宜方便，带回宿舍吃刚好。', { displayName: '灌饼', place: '宿舍', scene: '宿舍', area: '宿舍', floor: '宿舍', type: ['小吃'], weight: 3 }],
-  ['包子', ['早餐', '宿舍', '包子', '清淡', '便宜', '快速解决'], '早上方便，带回宿舍也合适。', { displayName: '包子', place: '宿舍' }],
+  ['麻酱鸡丝肉干面', ['早餐'], 'KFC 的早餐比较稳定，早上不用纠结。', { displayName: '麻酱鸡丝肉干面', place: '西区芒果一楼 KFC', scene: '早餐', area: '西区芒果一楼 KFC', floor: '西区芒果一楼 KFC', type: ['早餐'], weight: 8 }],
+  ['芝士猪柳蛋帕尼尼', ['早餐'], '帕尼尼方便拿着吃，适合赶时间。', { displayName: '芝士猪柳蛋帕尼尼', place: '西区芒果一楼 KFC', scene: '早餐', area: '西区芒果一楼 KFC', floor: '西区芒果一楼 KFC', type: ['早餐'], weight: 8 }],
+  ['芝士猪柳帕尼尼', ['早餐'], '帕尼尼简单稳，早上吃不费事。', { displayName: '芝士猪柳帕尼尼', place: '西区芒果一楼 KFC', scene: '早餐', area: '西区芒果一楼 KFC', floor: '西区芒果一楼 KFC', type: ['早餐'], weight: 8 }],
+  ['芝士鸡肉帕尼尼（轻盈版）', ['早餐'], '轻一点的帕尼尼，早上吃刚好。', { displayName: '芝士鸡肉帕尼尼（轻盈版）', place: '西区芒果一楼 KFC', scene: '早餐', area: '西区芒果一楼 KFC', floor: '西区芒果一楼 KFC', type: ['早餐'], weight: 8 }],
+  ['芝士鸡肉帕尼尼', ['早餐'], '鸡肉帕尼尼方便省事，早上不用想太多。', { displayName: '芝士鸡肉帕尼尼', place: '西区芒果一楼 KFC', scene: '早餐', area: '西区芒果一楼 KFC', floor: '西区芒果一楼 KFC', type: ['早餐'], weight: 8 }],
+  ['皮蛋瘦肉粥', ['早餐'], '粥更稳一点，早上吃不累。', { displayName: '皮蛋瘦肉粥', place: '西区芒果一楼 KFC', scene: '早餐', area: '西区芒果一楼 KFC', floor: '西区芒果一楼 KFC', type: ['早餐'], weight: 8 }],
+  ['八宝粥', ['早餐'], '便利店粥省事，适合不想排队的时候。', { displayName: '八宝粥', place: '便利店', scene: '早餐', area: '便利店', floor: '便利店', type: ['早餐'], weight: 7 }],
+  ['莲子粥', ['早餐'], '便利店粥简单稳，早上随手拿一份。', { displayName: '莲子粥', place: '便利店', scene: '早餐', area: '便利店', floor: '便利店', type: ['早餐'], weight: 7 }],
+  ['玉米粥', ['早餐'], '玉米粥清爽一点，早上吃着轻松。', { displayName: '玉米粥', place: '便利店', scene: '早餐', area: '便利店', floor: '便利店', type: ['早餐'], weight: 7 }],
+  ['速食面包', ['早餐'], '面包最省时间，随手拿一个就走。', { displayName: '速食面包', place: '便利店', scene: '早餐', area: '便利店', floor: '便利店', type: ['早餐'], weight: 6 }],
+  ['包子', ['早餐'], '包子简单顶饱，早上够用。', { displayName: '包子', place: '便利店', scene: '早餐', area: '便利店', floor: '便利店', type: ['早餐'], weight: 7 }],
 ];
 
 const typeTags = new Set(['米饭', '面', '粉', '包子', '小吃', '快餐', '汤类']);
@@ -108,7 +114,7 @@ export const defaultBreakfastFoods = breakfastItems.map(([name, tags, reason, me
   name,
   displayName: meta.displayName || name,
   place: meta.place || '',
-  scene: meta.scene || (meta.place === '宿舍' ? '宿舍' : '到店'),
+  scene: meta.scene || '早餐',
   area: meta.area || inferArea(meta.place || ''),
   floor: meta.floor || inferFloor(meta.place || '', meta.area || inferArea(meta.place || '')),
   type: meta.type || inferType(name, tags),
@@ -117,7 +123,7 @@ export const defaultBreakfastFoods = breakfastItems.map(([name, tags, reason, me
   weight: meta.weight || inferWeight(tags),
   enabled: meta.enabled ?? true,
   favorite: false,
-  avoidUntil: null,
+  avoidUntil: 0,
 }));
 
 export const defaultInstantNoodles = [
