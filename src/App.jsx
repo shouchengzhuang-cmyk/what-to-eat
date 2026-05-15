@@ -248,22 +248,15 @@ function normalizeWeight(weight) {
   return Math.min(10, Math.max(1, Math.round(value)));
 }
 
-function weightedRandomPick(candidates) {
-  if (candidates.length === 0) return null;
+function shuffleItems(items) {
+  const shuffled = [...items];
 
-  const weightedCandidates = candidates.map((food) => ({
-    food,
-    weight: normalizeWeight(food.weight),
-  }));
-  const totalWeight = weightedCandidates.reduce((total, item) => total + item.weight, 0);
-  let randomPoint = Math.random() * totalWeight;
-
-  for (const item of weightedCandidates) {
-    randomPoint -= item.weight;
-    if (randomPoint < 0) return item.food;
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
   }
 
-  return weightedCandidates.at(-1)?.food || null;
+  return shuffled;
 }
 
 function getGreeting(date = new Date()) {
@@ -334,6 +327,24 @@ function getMealInfoByMode(mode) {
   return { tags: ['夜宵'], label: '夜宵', hint: '这个点就别太正式了，来点夜宵。' };
 }
 
+function getActivePoolSignature(pool) {
+  return pool
+    .map((item) =>
+      [
+        item.id,
+        item.name,
+        item.displayName,
+        item.place,
+        item.scene,
+        item.reason,
+        item.enabled,
+        (item.type || []).join(','),
+        (item.tags || []).join(','),
+      ].join(':'),
+    )
+    .join('|');
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('recommend');
   const [foods, setFoods] = useState(getInitialFoods);
@@ -347,6 +358,9 @@ function App() {
   const [currentInstantNoodle, setCurrentInstantNoodle] = useState(null);
   const [historyItems, setHistoryItems] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [currentRoundQueue, setCurrentRoundQueue] = useState([]);
+  const [currentRoundIndex, setCurrentRoundIndex] = useState(0);
+  const [roundKey, setRoundKey] = useState('');
   const [toast, setToast] = useState({ id: 0, message: '', visible: false });
   const [editingFood, setEditingFood] = useState(null);
   const [settingsMessage, setSettingsMessage] = useState('');
@@ -361,6 +375,8 @@ function App() {
       : [];
   const activeFoodPool = isBreakfast ? breakfastPool : recommendationPool;
   const instantNoodlePool = instantNoodles.filter((noodle) => noodle.enabled);
+  const activeRoundKey = isBreakfast ? 'breakfast' : isLateNight ? 'night:noodles' : selectedScene === '到店' ? 'meal:dine-in' : selectedScene === '宿舍' ? 'meal:dorm' : '';
+  const activePoolSignature = getActivePoolSignature(isLateNight ? instantNoodlePool : activeFoodPool);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -397,6 +413,9 @@ function App() {
     setCurrentInstantNoodle(null);
     setHistoryItems([]);
     setHistoryIndex(-1);
+    setCurrentRoundQueue([]);
+    setCurrentRoundIndex(0);
+    setRoundKey('');
     setRoundMealInfo(null);
     setIsResultMode(false);
 
@@ -404,6 +423,19 @@ function App() {
       setSelectedScene('');
     }
   }, [recommendationMode]);
+
+  useEffect(() => {
+    setCurrentFood(null);
+    setCurrentInstantNoodle(null);
+    setHistoryItems([]);
+    setHistoryIndex(-1);
+    setCurrentRoundQueue([]);
+    setCurrentRoundIndex(0);
+    setRoundKey(activeRoundKey);
+    setRoundMealInfo(null);
+    setIsResultMode(false);
+    clearToast();
+  }, [activeRoundKey, activePoolSignature]);
 
   useEffect(() => {
     if (!toast.message) return undefined;
@@ -446,6 +478,9 @@ function App() {
     setIsResultMode(false);
     setHistoryItems([]);
     setHistoryIndex(-1);
+    setCurrentRoundQueue([]);
+    setCurrentRoundIndex(0);
+    setRoundKey('');
     setRoundMealInfo(null);
     clearToast();
   };
@@ -464,13 +499,35 @@ function App() {
     }
   };
 
-  const pickRandomFromActivePool = (excludedId = getCurrentRecommendation()?.id) => {
+  const createRoundQueue = () => shuffleItems(getActivePool());
+
+  const getNextRoundItem = ({ resetRound = false } = {}) => {
     const pool = getActivePool();
-    const candidates = pool.length > 1 ? pool.filter((item) => item.id !== excludedId) : pool;
-    return weightedRandomPick(candidates);
+    if (pool.length === 0) return { item: null, restarted: false };
+
+    if (resetRound || roundKey !== activeRoundKey || currentRoundQueue.length === 0) {
+      const nextQueue = shuffleItems(pool);
+      setCurrentRoundQueue(nextQueue);
+      setCurrentRoundIndex(1);
+      setRoundKey(activeRoundKey);
+      return { item: nextQueue[0] || null, restarted: false };
+    }
+
+    if (currentRoundIndex < currentRoundQueue.length) {
+      const nextItem = currentRoundQueue[currentRoundIndex];
+      setCurrentRoundIndex((current) => current + 1);
+      return { item: nextItem || null, restarted: false };
+    }
+
+    const nextQueue = createRoundQueue();
+    setCurrentRoundQueue(nextQueue);
+    setCurrentRoundIndex(1);
+    setRoundKey(activeRoundKey);
+    showToast('这一轮展示完了，现在重新开始。');
+    return { item: nextQueue[0] || null, restarted: true };
   };
 
-  const commitRecommendation = (item, { resetHistory = false } = {}) => {
+  const commitRecommendation = (item, { resetHistory = false, preserveToast = false } = {}) => {
     if (!item) {
       showRecommendation(null);
       setIsResultMode(historyItems.length > 0);
@@ -491,17 +548,20 @@ function App() {
         return next;
       });
     }
-    showToast('');
+    if (!preserveToast) {
+      showToast('');
+    }
   };
 
-  const randomRecommend = ({ resetSkipped = false } = {}) => {
+  const randomRecommend = () => {
     if (!isBreakfast && !selectedScene) {
       showToast('先选到店或宿舍，再随机。');
       return;
     }
 
     setRoundMealInfo(getMealInfoByMode(recommendationMode));
-    commitRecommendation(pickRandomFromActivePool(null), { resetHistory: true });
+    const next = getNextRoundItem({ resetRound: true });
+    commitRecommendation(next.item, { resetHistory: true, preserveToast: next.restarted });
   };
 
   const resolveHistoryItem = (item) => {
@@ -517,9 +577,9 @@ function App() {
       return true;
     }
 
-    const next = pickRandomFromActivePool();
-    if (!next) return false;
-    commitRecommendation(next);
+    const next = getNextRoundItem();
+    if (!next.item) return false;
+    commitRecommendation(next.item, { preserveToast: next.restarted });
     return true;
   };
 
@@ -619,6 +679,9 @@ function App() {
     setIsResultMode(false);
     setHistoryItems([]);
     setHistoryIndex(-1);
+    setCurrentRoundQueue([]);
+    setCurrentRoundIndex(0);
+    setRoundKey('');
     setRoundMealInfo(null);
     setSelectedScene('');
     setSettingsMessage('已恢复默认菜单');
@@ -631,8 +694,11 @@ function App() {
     setCurrentFood(null);
     setCurrentInstantNoodle(null);
     setIsResultMode(false);
-    setSkippedFoodIds([]);
-    setSkippedInstantNoodleIds([]);
+    setHistoryItems([]);
+    setHistoryIndex(-1);
+    setCurrentRoundQueue([]);
+    setCurrentRoundIndex(0);
+    setRoundKey('');
     setRoundMealInfo(null);
     setSelectedScene('');
     setSettingsMessage('已清空');
@@ -655,14 +721,17 @@ function App() {
             onSelectScene={selectScene}
             mealInfo={roundMealInfo}
             homeMealInfo={getMealInfoByMode(recommendationMode)}
-            onRandom={() => randomRecommend({ resetSkipped: true })}
-            onRestart={() => randomRecommend({ resetSkipped: true })}
+            onRandom={randomRecommend}
+            onRestart={randomRecommend}
             onBackHome={() => {
               setCurrentFood(null);
               setCurrentInstantNoodle(null);
               setIsResultMode(false);
               setHistoryItems([]);
               setHistoryIndex(-1);
+              setCurrentRoundQueue([]);
+              setCurrentRoundIndex(0);
+              setRoundKey('');
               setRoundMealInfo(null);
               clearToast();
             }}
