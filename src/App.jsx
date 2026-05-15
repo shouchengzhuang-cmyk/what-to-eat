@@ -76,22 +76,84 @@ function togglePresetTag(tags, tag) {
   return [...tags, tag];
 }
 
-function getInitialFoods() {
+function readSavedData() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved?.version === 1 && Array.isArray(saved.foods)) {
-      return normalizeFoods(saved.foods);
-    }
+    if (saved && typeof saved === 'object') return saved;
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
+  return null;
+}
+
+function getInitialFoods() {
+  const saved = readSavedData();
+  if ((saved?.version === 1 || saved?.version === 2) && Array.isArray(saved.foods)) {
+    return normalizeFoods(saved.foods);
+  }
+
   return normalizeFoods(defaultFoods);
+}
+
+function getInitialBreakfastFoods() {
+  const saved = readSavedData();
+  return mergeDefaultPool(defaultBreakfastFoods, saved?.breakfastFoods, normalizePoolFood);
+}
+
+function getInitialInstantNoodles() {
+  const saved = readSavedData();
+  return mergeDefaultPool(defaultInstantNoodles, saved?.instantNoodles, normalizePoolFood);
 }
 
 function normalizeFoods(foods) {
   return foods
     .map((food, index) => normalizeFood(food, index))
     .filter(Boolean);
+}
+
+function normalizePoolFoods(items) {
+  return items
+    .map((item, index) => normalizePoolFood(item, index))
+    .filter(Boolean);
+}
+
+function mergeDefaultPool(defaultItems, savedItems, normalizer) {
+  if (!Array.isArray(savedItems)) return normalizePoolFoods(defaultItems);
+
+  const savedById = new Map(savedItems.filter((item) => item?.id).map((item) => [item.id, item]));
+  return defaultItems
+    .map((item, index) => normalizer({ ...item, ...savedById.get(item.id), id: item.id }, index))
+    .filter(Boolean);
+}
+
+function normalizePoolFood(food, index = 0) {
+  if (!food || typeof food.name !== 'string') return null;
+
+  const name = food.name.trim();
+  if (!name) return null;
+
+  const displayName = typeof food.displayName === 'string' && food.displayName.trim() ? food.displayName.trim() : name;
+  const place = typeof food.place === 'string' ? food.place.trim() : '';
+  const brand = typeof food.brand === 'string' ? food.brand.trim() : '';
+
+  return {
+    ...food,
+    id: food.id || `pool-${Date.now()}-${index}`,
+    brand,
+    name,
+    displayName,
+    place,
+    scene: typeof food.scene === 'string' && food.scene.trim() ? food.scene.trim() : '',
+    area: typeof food.area === 'string' && food.area.trim() ? food.area.trim() : '',
+    floor: typeof food.floor === 'string' && food.floor.trim() ? food.floor.trim() : '',
+    type: Array.isArray(food.type) ? food.type : [],
+    tags: Array.isArray(food.tags) ? food.tags : [],
+    reason: typeof food.reason === 'string' && food.reason.trim() ? food.reason.trim() : '今天就吃它，简单省心。',
+    weight: normalizeWeight(food.weight),
+    enabled: food.enabled !== false,
+    favorite: Boolean(food.favorite),
+    avoidUntil: food.avoidUntil ?? null,
+  };
 }
 
 function normalizeFood(food, index = 0) {
@@ -264,6 +326,8 @@ function getMealInfoByMode(mode) {
 function App() {
   const [activeTab, setActiveTab] = useState('recommend');
   const [foods, setFoods] = useState(getInitialFoods);
+  const [breakfastFoods, setBreakfastFoods] = useState(getInitialBreakfastFoods);
+  const [instantNoodles, setInstantNoodles] = useState(getInitialInstantNoodles);
   const [now, setNow] = useState(() => new Date());
   const [selectedScene, setSelectedScene] = useState('');
   const [roundMealInfo, setRoundMealInfo] = useState(null);
@@ -281,13 +345,13 @@ function App() {
   const recommendationMode = getRecommendationMode(now);
   const isBreakfast = recommendationMode === 'breakfast';
   const isLateNight = recommendationMode === 'late-night';
-  const breakfastPool = defaultBreakfastFoods.filter((food) => food.enabled);
+  const breakfastPool = breakfastFoods.filter((food) => food.enabled);
   const recommendationPool =
     recommendationMode === 'meal' && selectedScene
       ? foods.filter((food) => food.enabled && food.scene === selectedScene && food.tags.includes('正餐') && !food.tags.includes('早餐'))
       : [];
   const activeFoodPool = isBreakfast ? breakfastPool : recommendationPool;
-  const instantNoodlePool = defaultInstantNoodles.filter((noodle) => noodle.enabled);
+  const instantNoodlePool = instantNoodles.filter((noodle) => noodle.enabled);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -300,14 +364,24 @@ function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, foods }));
-  }, [foods]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, foods, breakfastFoods, instantNoodles }));
+  }, [foods, breakfastFoods, instantNoodles]);
 
   useEffect(() => {
-    if (currentFood && !currentFood.id?.startsWith('breakfast-')) {
+    if (!currentFood) return;
+
+    if (currentFood.id?.startsWith('breakfast-')) {
+      setCurrentFood(breakfastFoods.find((food) => food.id === currentFood.id) || null);
+    } else {
       setCurrentFood(foods.find((food) => food.id === currentFood.id) || null);
     }
-  }, [foods, currentFood]);
+  }, [foods, breakfastFoods, currentFood]);
+
+  useEffect(() => {
+    if (currentInstantNoodle) {
+      setCurrentInstantNoodle(instantNoodles.find((noodle) => noodle.id === currentInstantNoodle.id) || null);
+    }
+  }, [instantNoodles, currentInstantNoodle]);
 
   useEffect(() => {
     setCurrentFood(null);
@@ -439,6 +513,14 @@ function App() {
     setFoods((current) => current.map((food) => (food.id === id ? { ...food, ...patch } : food)));
   };
 
+  const updateBreakfastFood = (id, patch) => {
+    setBreakfastFoods((current) => current.map((food) => (food.id === id ? { ...food, ...patch } : food)));
+  };
+
+  const updateInstantNoodle = (id, patch) => {
+    setInstantNoodles((current) => current.map((noodle) => (noodle.id === id ? { ...noodle, ...patch } : noodle)));
+  };
+
   const skipCurrentFood = () => {
     if (isLateNight) {
       if (!currentInstantNoodle) return;
@@ -471,9 +553,17 @@ function App() {
   };
 
   const toggleCurrentFavorite = () => {
-    if (!currentFood || isBreakfast) return;
-    const nextFavorite = !currentFood.favorite;
-    updateFood(currentFood.id, { favorite: nextFavorite });
+    const current = currentInstantNoodle || currentFood;
+    if (!current) return;
+
+    const nextFavorite = !current.favorite;
+    if (currentInstantNoodle) {
+      updateInstantNoodle(currentInstantNoodle.id, { favorite: nextFavorite });
+    } else if (isBreakfast) {
+      updateBreakfastFood(currentFood.id, { favorite: nextFavorite });
+    } else {
+      updateFood(currentFood.id, { favorite: nextFavorite });
+    }
     showToast(nextFavorite ? '已设为常吃' : '已取消常吃');
   };
 
@@ -497,7 +587,7 @@ function App() {
   };
 
   const exportData = () => {
-    const data = JSON.stringify({ version: 1, foods }, null, 2);
+    const data = JSON.stringify({ version: 2, foods, breakfastFoods, instantNoodles }, null, 2);
     const date = new Date().toISOString().slice(0, 10);
     const blob = new Blob([data], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -516,10 +606,12 @@ function App() {
 
     try {
       const parsed = JSON.parse(await file.text());
-      if (parsed?.version !== 1 || !Array.isArray(parsed.foods)) {
+      if (![1, 2].includes(parsed?.version) || !Array.isArray(parsed.foods)) {
         throw new Error('Invalid format');
       }
       setFoods(normalizeFoods(parsed.foods));
+      setBreakfastFoods(mergeDefaultPool(defaultBreakfastFoods, parsed.breakfastFoods, normalizePoolFood));
+      setInstantNoodles(mergeDefaultPool(defaultInstantNoodles, parsed.instantNoodles, normalizePoolFood));
       setSettingsMessage('已导入');
     } catch {
       setSettingsMessage('导入失败');
@@ -527,7 +619,9 @@ function App() {
   };
 
   const resetDefault = () => {
-    setFoods(defaultFoods);
+    setFoods(normalizeFoods(defaultFoods));
+    setBreakfastFoods(normalizePoolFoods(defaultBreakfastFoods));
+    setInstantNoodles(normalizePoolFoods(defaultInstantNoodles));
     setCurrentFood(null);
     setCurrentInstantNoodle(null);
     setIsResultMode(false);
@@ -540,6 +634,8 @@ function App() {
 
   const clearAll = () => {
     setFoods([]);
+    setBreakfastFoods([]);
+    setInstantNoodles([]);
     setCurrentFood(null);
     setCurrentInstantNoodle(null);
     setIsResultMode(false);
@@ -585,8 +681,8 @@ function App() {
         {activeTab === 'library' && (
           <LibraryPage
             foods={foods}
-            breakfastFoods={defaultBreakfastFoods}
-            instantNoodles={defaultInstantNoodles}
+            breakfastFoods={breakfastFoods}
+            instantNoodles={instantNoodles}
             editingFood={editingFood}
             setEditingFood={setEditingFood}
             onSave={saveFood}
@@ -662,7 +758,6 @@ function RecommendPage({
   const [isSwipingAway, setIsSwipingAway] = useState(false);
 
   const toggleFavoriteOnce = () => {
-    if (isBreakfast || isLateNight) return;
     const now = Date.now();
     if (now - lastFavoriteToggleAtRef.current < 350) return;
     lastFavoriteToggleAtRef.current = now;
@@ -691,12 +786,11 @@ function RecommendPage({
       window.setTimeout(() => {
         onSkip();
         setIsSwipingAway(false);
-      }, 180);
+      }, 300);
       return;
     }
 
     if (Math.abs(distanceY) > 14 || distanceX > 14) return;
-    if (isBreakfast || isLateNight) return;
 
     const now = Date.now();
     if (now - lastTapTimeRef.current < 320) {
@@ -795,7 +889,7 @@ function RecommendPage({
     <section
       onTouchStart={handleResultTouchStart}
       onTouchEnd={handleResultTouchEnd}
-      onDoubleClick={isBreakfast || isLateNight ? undefined : toggleFavoriteOnce}
+      onDoubleClick={toggleFavoriteOnce}
       className="relative -mx-5 -mt-4 flex min-h-[calc(100vh-4.25rem)] touch-none select-none flex-col overflow-hidden px-5 pb-5 pt-6"
     >
       {isLateNight ? (
@@ -809,7 +903,6 @@ function RecommendPage({
         <ResultCard
           food={currentFood}
           resultContext={isBreakfast ? '早餐' : [selectedScene, mealInfo?.label].filter(Boolean).join(' · ')}
-          canFavorite={!isBreakfast}
           isSwipingAway={isSwipingAway}
           onRestart={onRestart}
           onBackHome={onBackHome}
@@ -840,8 +933,8 @@ function InstantNoodleCard({ noodle, isSwipingAway, onRestart, onBackHome }) {
 
   return (
     <article
-      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-200 ${
-        isSwipingAway ? '-translate-y-16 opacity-0' : 'translate-y-0 opacity-100'
+      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-300 ${
+        isSwipingAway ? '-translate-y-[120%] opacity-0' : 'translate-y-0 opacity-100'
       }`}
     >
       <button
@@ -858,6 +951,7 @@ function InstantNoodleCard({ noodle, isSwipingAway, onRestart, onBackHome }) {
       <div>
         <div className="flex items-center justify-between gap-3 pl-10">
           <p className="text-sm font-medium text-amber-200">泡面夜宵</p>
+          {noodle.favorite && <span className="rounded-full bg-amber-300/90 px-2.5 py-1 text-xs font-bold text-slate-950">已常吃</span>}
         </div>
       </div>
 
@@ -877,15 +971,12 @@ function InstantNoodleCard({ noodle, isSwipingAway, onRestart, onBackHome }) {
         )}
         <p className="mt-6 text-lg font-normal leading-8 text-slate-200">{noodle.reason}</p>
       </div>
-
-      <div className="space-y-2 text-center">
-        <p className="text-xs font-medium text-slate-500">上划换</p>
-      </div>
+      <div />
     </article>
   );
 }
 
-function ResultCard({ food, resultContext, canFavorite = true, isSwipingAway, onRestart, onBackHome }) {
+function ResultCard({ food, resultContext, isSwipingAway, onRestart, onBackHome }) {
   if (!food) {
     return (
       <div className="flex min-h-[70vh] flex-1 flex-col items-center justify-center rounded-[2rem] border border-dashed border-white/14 bg-white/[0.035] p-6 text-center">
@@ -909,8 +1000,8 @@ function ResultCard({ food, resultContext, canFavorite = true, isSwipingAway, on
 
   return (
     <article
-      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-200 ${
-        isSwipingAway ? '-translate-y-16 opacity-0' : 'translate-y-0 opacity-100'
+      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-300 ${
+        isSwipingAway ? '-translate-y-[120%] opacity-0' : 'translate-y-0 opacity-100'
       }`}
     >
       <button
@@ -927,7 +1018,7 @@ function ResultCard({ food, resultContext, canFavorite = true, isSwipingAway, on
       <div>
         <div className="flex items-center justify-between gap-3 pl-10">
           <p className="text-sm font-medium text-amber-200">{resultContext || '这顿吃'}</p>
-          {canFavorite && food.favorite && <span className="rounded-full bg-amber-300/90 px-2.5 py-1 text-xs font-bold text-slate-950">已常吃</span>}
+          {food.favorite && <span className="rounded-full bg-amber-300/90 px-2.5 py-1 text-xs font-bold text-slate-950">已常吃</span>}
         </div>
       </div>
 
@@ -956,12 +1047,7 @@ function ResultCard({ food, resultContext, canFavorite = true, isSwipingAway, on
         )}
         <p className="mt-6 text-lg font-normal leading-8 text-slate-200">{food.reason}</p>
       </div>
-
-      <div className="space-y-2 text-center">
-        <p className="text-xs font-medium text-slate-500">
-          {canFavorite ? `上划换 / ${food.favorite ? '双击取消' : '双击常吃'}` : '上划换'}
-        </p>
-      </div>
+      <div />
     </article>
   );
 }
@@ -1085,10 +1171,13 @@ function FoodCard({ food, setEditingFood, onDelete, onToggleFavorite, readOnly =
 function InstantNoodleListCard({ noodle }) {
   return (
     <article className="rounded-2xl border border-white/8 bg-white/[0.045] p-3">
-      <div className="min-w-0">
-        <h2 className="break-words text-base font-semibold text-white">{noodle.displayName || noodle.name}</h2>
-        <p className="mt-1 text-xs leading-5 text-slate-500">{noodle.brand}</p>
-        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{noodle.reason}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="break-words text-base font-semibold text-white">{noodle.displayName || noodle.name}</h2>
+          <p className="mt-1 text-xs leading-5 text-slate-500">{noodle.brand}</p>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{noodle.reason}</p>
+        </div>
+        {noodle.favorite && <span className="shrink-0 rounded-full bg-amber-300/90 px-2 py-0.5 text-[11px] font-bold text-slate-950">常吃</span>}
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {(noodle.tags || []).slice(0, 5).map((tag) => (
