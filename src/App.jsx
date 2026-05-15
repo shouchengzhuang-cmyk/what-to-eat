@@ -789,7 +789,7 @@ function RecommendPage({
         window.setTimeout(() => {
           setIsBouncing(false);
           setSwipeDirection(null);
-        }, 180);
+        }, 140);
         return;
       }
 
@@ -803,7 +803,7 @@ function RecommendPage({
         }
         setIsSwipingOut(false);
         setSwipeDirection(null);
-      }, 220);
+      }, 150);
       return;
     }
 
@@ -821,18 +821,18 @@ function RecommendPage({
   if (!isResultMode) {
     const isSinglePoolMode = isBreakfast || isLateNight;
     const singlePoolCount = isBreakfast ? candidateCount : instantCandidateCount;
-    const headerLabel = isBreakfast ? '早餐' : isLateNight ? '泡面夜宵' : selectedScene ? getGreeting() : '先选个场景';
-    const title = isBreakfast ? '早餐吃什么？' : isLateNight ? '夜宵吃什么？' : '今天吃什么？';
+    const headerLabel = isBreakfast ? '' : isLateNight ? '泡面夜宵' : selectedScene ? getGreeting() : '先选个场景';
+    const title = isBreakfast ? '早上好！' : isLateNight ? '夜宵吃什么？' : '今天吃什么？';
     const subtitle = isBreakfast ? '早上先垫一口。' : isLateNight ? '别想了，泡面局。' : '别想了，交给随机。';
     const buttonText = isBreakfast ? '随机一份' : '随机一碗';
-    const countText = isBreakfast ? `当前早餐可选：${candidateCount} 个` : `当前泡面可选：${instantCandidateCount} 个`;
-    const footnote = isBreakfast ? '早餐只从早餐卡池里选。' : '夜宵有且只有泡面。';
+    const countText = isLateNight ? `当前泡面可选：${instantCandidateCount} 个` : '';
+    const footnote = isLateNight ? '夜宵有且只有泡面。' : '';
 
     return (
       <section className="flex min-h-[calc(100vh-8rem)] flex-col pb-3">
         <div className="flex flex-1 flex-col justify-center py-6">
           <header className="text-center">
-            <p className="text-sm font-semibold text-amber-200">{headerLabel}</p>
+            {headerLabel && <p className="text-sm font-semibold text-amber-200">{headerLabel}</p>}
             <h1 className="mt-2 text-[2.35rem] font-bold leading-tight tracking-normal text-white">
               {title}
             </h1>
@@ -841,18 +841,18 @@ function RecommendPage({
 
           {isSinglePoolMode ? (
             <>
-              <p className="mt-10 text-center text-sm font-semibold text-slate-400">{countText}</p>
+              {countText && <p className="mt-10 text-center text-sm font-semibold text-slate-400">{countText}</p>}
               <button
                 type="button"
                 onClick={onRandom}
                 disabled={singlePoolCount === 0}
-                className={`mx-auto mt-4 h-16 w-full max-w-[19rem] rounded-[1.4rem] text-xl font-bold shadow-glow transition active:scale-[0.99] ${
+                className={`mx-auto ${countText ? 'mt-4' : 'mt-10'} h-16 w-full max-w-[19rem] rounded-[1.4rem] text-xl font-bold shadow-glow transition active:scale-[0.99] ${
                   singlePoolCount === 0 ? 'cursor-not-allowed bg-slate-700 text-slate-400 shadow-none' : 'bg-amber-400 text-slate-950'
                 }`}
               >
                 {buttonText}
               </button>
-              <p className="mt-3 text-center text-xs text-slate-500">{footnote}</p>
+              {footnote && <p className="mt-3 text-center text-xs text-slate-500">{footnote}</p>}
             </>
           ) : (
             <>
@@ -934,9 +934,9 @@ function RecommendPage({
 }
 
 function getSwipeClass({ swipeDirection, isSwipingOut, isBouncing }) {
-  if (isSwipingOut && swipeDirection === 'up') return '-translate-y-[110%] scale-[0.98] opacity-0';
-  if (isSwipingOut && swipeDirection === 'down') return 'translate-y-[110%] scale-[0.98] opacity-0';
-  if (isBouncing && swipeDirection === 'down') return 'translate-y-8 scale-[0.995] opacity-95';
+  if (isSwipingOut && swipeDirection === 'up') return '-translate-y-1 opacity-0';
+  if (isSwipingOut && swipeDirection === 'down') return 'translate-y-1 opacity-0';
+  if (isBouncing && swipeDirection === 'down') return 'translate-y-2 opacity-95';
   return 'translate-y-0 scale-100 opacity-100';
 }
 
@@ -961,7 +961,7 @@ function InstantNoodleCard({ noodle, swipeDirection, isSwipingOut, isBouncing, o
 
   return (
     <article
-      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-200 ease-out ${getSwipeClass({
+      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-150 ease-out ${getSwipeClass({
         swipeDirection,
         isSwipingOut,
         isBouncing,
@@ -1030,7 +1030,7 @@ function ResultCard({ food, resultContext, swipeDirection, isSwipingOut, isBounc
 
   return (
     <article
-      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-200 ease-out ${getSwipeClass({
+      className={`relative flex min-h-[74vh] flex-1 flex-col justify-between rounded-[2rem] border border-amber-300/12 bg-gradient-to-b from-amber-300/[0.13] via-white/[0.035] to-white/[0.02] p-5 shadow-glow transition duration-150 ease-out ${getSwipeClass({
         swipeDirection,
         isSwipingOut,
         isBouncing,
